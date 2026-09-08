@@ -67,7 +67,7 @@ def find_nearest_population_cell(
                     "density_per_km2": round(value / cell_area_km2, 2),
                     "data_source": "REAL PUBLIC DATA - WorldPop 2025",
                 }
-        except (RasterioError, OSError) as error:
+        except (RasterioError, OSError, ValueError, IndexError) as error:
             print(f"WorldPop raster unavailable; using labeled fallback: {error}")
     if not cells:
         return None
