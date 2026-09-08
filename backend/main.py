@@ -117,6 +117,7 @@ def create_table():
             recommendation TEXT,
             recommendation_reason TEXT,
             location_name TEXT,
+            area_name TEXT,
             location_address TEXT,
             nearby_landmark TEXT
         )
@@ -133,6 +134,7 @@ def create_table():
         ("recommendation", "TEXT"),
         ("recommendation_reason", "TEXT"),
         ("location_name", "TEXT"),
+        ("area_name", "TEXT"),
         ("location_address", "TEXT"),
         ("nearby_landmark", "TEXT"),
     ):
@@ -160,6 +162,7 @@ class Measurement(BaseModel):
     network_type: Optional[str] = None
     data_source: str = "REAL DEVICE"
     location_name: Optional[str] = None
+    area_name: Optional[str] = None
     location_address: Optional[str] = None
     nearby_landmark: Optional[str] = None
 
@@ -258,8 +261,8 @@ def save_measurement(measurement: Measurement):
          network_type, data_source, timestamp, quality_score, quality_category,
          nearest_tower_id, nearest_tower_distance_km, nearest_tower_data_source,
          population_density, population_data_source, recommendation, recommendation_reason,
-         location_name, location_address, nearby_landmark)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         location_name, area_name, location_address, nearby_landmark)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         measurement.latitude,
         measurement.longitude,
@@ -281,6 +284,7 @@ def save_measurement(measurement: Measurement):
         recommendation["action"],
         recommendation["reason"],
         measurement.location_name,
+        measurement.area_name,
         measurement.location_address,
         measurement.nearby_landmark,
     ))
@@ -618,7 +622,7 @@ def export_all_measurements():
         "date", "time", "download_mbps", "upload_mbps", "ping_ms",
         "jitter_ms", "quality_score", "quality_category", "data_source",
         "nearest_tower_id", "nearest_tower_distance_km", "recommendation",
-        "location_name", "location_address", "nearby_landmark",
+        "location_name", "area_name", "location_address", "nearby_landmark",
     ])
     for item in measurements:
         timestamp = item.get("timestamp") or ""
@@ -633,7 +637,9 @@ def export_all_measurements():
             item.get("quality_category"), item.get("data_source"),
             tower.get("tower_id"), tower.get("distance_km"),
             recommendation.get("action"),
-            item.get("location_name"), item.get("location_address"),
+            item.get("location_name"),
+            item.get("area_name") or item.get("location_name") or item.get("location_address"),
+            item.get("location_address"),
             item.get("nearby_landmark"),
         ])
     return PlainTextResponse(

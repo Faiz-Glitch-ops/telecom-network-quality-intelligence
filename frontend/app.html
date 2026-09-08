@@ -128,7 +128,7 @@
       if(response.ok) place=await response.json();
     } catch(e) { place={}; }
     if (!place.location_name && !place.area_name && !place.address) {
-      place={location_name:gpsLabel,address:gpsLabel};
+      place={location_name:gpsLabel,area_name:gpsLabel,address:gpsLabel};
     }
     currentPlace=place;
     const area=place.area_name||place.location_name||"Area name unavailable";
@@ -182,7 +182,8 @@
       $("status").textContent="Saving result...";
       const saved=await fetch(SERVER+"/measurements",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({latitude:c.latitude,longitude:c.longitude,accuracy:c.accuracy,location_name:place.location_name||null,
-          location_address:place.address||null,nearby_landmark:place.nearby_landmark||null,download_speed:speed,
+          area_name:place.area_name||place.location_name||null,location_address:place.address||null,
+          nearby_landmark:place.nearby_landmark||null,download_speed:speed,
           upload_speed:uploadSpeed,ping:avg,jitter:jitter,network_type:navigator.connection?.effectiveType||"unknown",data_source:"REAL DEVICE"})});
       if(!saved.ok) throw Error("Backend ne measurement reject ki"); const data=await saved.json();
       $("score").textContent=data.quality_score===null?"N/A":data.quality_score;
@@ -226,7 +227,7 @@
     ms.forEach(x=>{const point=[x.latitude,x.longitude]; measurementBounds.push(point); const color=x.quality_category==="Poor"?"#c93636":x.quality_category==="Good"?"#17834b":"#e09f20";
       L.circleMarker(point,{radius:9,color:color,fillColor:color,fillOpacity:.85}).bindPopup("Score: "+x.quality_score+" ("+x.quality_category+")<br>"+
         (x.location_name||x.location_address||"Location name unavailable")+"<br>GPS accuracy: "+x.accuracy+" m<br>"+(x.nearby_landmark?"Nearby: "+x.nearby_landmark+"<br>":"")+
-        "<b>Area:</b> "+(x.location_name||"Unavailable")+"<br>"+(x.recommendation?.action||"N/A")).addTo(measurementMarkers);});
+        "<b>Area:</b> "+(x.area_name||x.location_name||"Unavailable")+"<br>"+(x.recommendation?.action||"N/A")).addTo(measurementMarkers);});
     ts.forEach(x=>{const point=[x.latitude,x.longitude];L.circleMarker(point,{radius:3,color:"#222",fillColor:"#222",fillOpacity:1}).bindPopup("Real tower: "+x.tower_id).addTo(towerMarkers);});
     if(measurementBounds.length) map.fitBounds(measurementBounds,{padding:[30,30],maxZoom:18});
     $("status").title="Backend: "+health.status+" | Towers: "+health.tower_count+" | Population: "+health.population_source;
