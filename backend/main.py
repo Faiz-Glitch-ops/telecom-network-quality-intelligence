@@ -17,6 +17,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from pathlib import Path
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from network_quality import calculate_quality_score
 from tower_distance import find_nearest_tower
 from population_density import (
@@ -251,7 +252,7 @@ def save_measurement(measurement: Measurement):
         measurement.jitter,
         measurement.upload_speed,
     )
-    measured_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    measured_at = datetime.now(ZoneInfo("Asia/Karachi")).isoformat(timespec="seconds")
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -652,31 +653,27 @@ def export_all_measurements():
         "date", "time", "download_mbps", "upload_mbps", "ping_ms",
         "jitter_ms", "quality_score", "quality_category", "data_source",
         "nearest_tower_id", "nearest_tower_distance_km", "recommendation",
-        "current_location", "location_name", "area_name", "location_address",
-        "nearby_landmark",
     ])
     for item in measurements:
         timestamp = item.get("timestamp") or ""
-        date, separator, time = timestamp.partition("T")
+        try:
+            measured_at = datetime.fromisoformat(timestamp).astimezone(
+                ZoneInfo("Asia/Karachi")
+            )
+            date = measured_at.strftime("%Y-%m-%d")
+            time = measured_at.strftime("%H:%M:%S")
+        except ValueError:
+            date, time = "", ""
         tower = item.get("nearest_tower") or {}
         recommendation = item.get("recommendation") or {}
         writer.writerow([
             item["id"], f"{item['latitude']:.7f}", f"{item['longitude']:.7f}",
-            item.get("accuracy"), date, time.split(".")[0] if separator else "",
+            item.get("accuracy"), date, time,
             item.get("download_speed"), item.get("upload_speed"),
             item.get("ping"), item.get("jitter"), item.get("quality_score"),
             item.get("quality_category"), item.get("data_source"),
             tower.get("tower_id"), tower.get("distance_km"),
             recommendation.get("action"),
-            item.get("area_name")
-            or item.get("location_name")
-            or item.get("location_address")
-            or "GPS "
-            + f"{item['latitude']:.6f}, {item['longitude']:.6f}",
-            item.get("location_name"),
-            item.get("area_name") or item.get("location_name") or item.get("location_address"),
-            item.get("location_address"),
-            item.get("nearby_landmark"),
         ])
     return PlainTextResponse(
         content="\ufeff" + output.getvalue(),
