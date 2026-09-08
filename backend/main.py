@@ -653,6 +653,7 @@ def export_all_measurements():
         "date", "time", "download_mbps", "upload_mbps", "ping_ms",
         "jitter_ms", "quality_score", "quality_category", "data_source",
         "nearest_tower_id", "nearest_tower_distance_km", "recommendation",
+        "current_location",
     ])
     for item in measurements:
         timestamp = item.get("timestamp") or ""
@@ -674,6 +675,11 @@ def export_all_measurements():
             item.get("quality_category"), item.get("data_source"),
             tower.get("tower_id"), tower.get("distance_km"),
             recommendation.get("action"),
+            item.get("area_name")
+            or item.get("location_name")
+            or item.get("location_address")
+            or "GPS "
+            + f"{item['latitude']:.6f}, {item['longitude']:.6f}",
         ])
     return PlainTextResponse(
         content="\ufeff" + output.getvalue(),
