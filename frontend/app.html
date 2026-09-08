@@ -26,6 +26,10 @@
     .hero { text-align:center; background:linear-gradient(135deg,#e5f5ff,#fff); }
     .score { text-align:center; font-size:58px; font-weight:bold; color:var(--green); }
     .score.poor { color:var(--red); } .muted { color:#5d6d7e; font-size:13px; }
+    .recommendation-card { background:#f3f8fc; border-left:5px solid var(--blue2); padding:12px; border-radius:9px; line-height:1.45; }
+    .recommendation-card.high { border-left-color:var(--red); background:#fff2f2; }
+    .recommendation-card.medium { border-left-color:var(--orange); background:#fff8eb; }
+    .list { margin:6px 0 0 18px; padding:0; } .download-status { min-height:20px; }
     #map { height:330px; border-radius:12px; overflow:hidden; } .grid { display:grid;
       grid-template-columns:repeat(2,1fr); gap:8px; } .stat { background:#f0f4f8; padding:10px;
       border-radius:9px; } .stat b { display:block; font-size:19px; margin-top:3px; }
@@ -53,7 +57,7 @@
         <div class="stat">Ping<b id="ping">-</b></div><div class="stat">Jitter<b id="jitter">-</b></div>
         <div class="stat">GPS accuracy<b id="accuracy">-</b></div>
       </div>
-      <p id="location" class="muted"></p><p id="place" class="result-line"></p><p id="recommendation" class="result-line"></p>
+      <p id="location" class="muted"></p><p id="place" class="result-line"></p><div id="recommendation" class="recommendation-card"></div>
     </div>
   </section>
   <section id="insightsTab" class="tab-panel card"><h3>Ask Network Intelligence</h3>
@@ -80,7 +84,7 @@
   <button id="exportAll" class="primary" style="margin-top:8px;background:#17834b">Export All Measurements to Excel</button>
   <button id="clearAll" class="primary" style="margin-top:8px;background:#7b1e2b">Delete All Saved Measurements</button>
   <p class="muted">The Excel-compatible CSV includes exact GPS coordinates, date/time, score, network metrics, tower and recommendation.</p></section>
-  <section id="mapTab" class="tab-panel card"><h3>Live Network Map</h3><p class="muted">Red = poor, amber = moderate, green = good, black = real public tower.</p><div id="map"></div></section>
+  <section id="mapTab" class="tab-panel card"><h3>Live Network Map</h3><p id="currentArea" class="recommendation-card">Current area will appear here after GPS is allowed.</p><p class="muted">Red = poor, amber = moderate, green = good, black = real public tower.</p><div id="map"></div></section>
   <section id="settingsTab" class="tab-panel card"><b>Backend connection</b><input id="server" placeholder="https://your-api.example.com">
     <button id="saveServer" class="primary">Save API URL</button><p class="muted">Vercel frontend ke liye deployed FastAPI URL yahan save karein.</p></section>
 </main>
@@ -95,7 +99,7 @@
   const map = L.map("map").setView([31.52,74.30],11);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     {maxZoom:19,attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
-  const markers = L.layerGroup().addTo(map); let currentMarker=null; let running=false;
+  const markers = L.layerGroup().addTo(map); let currentMarker=null; let running=false; let currentPlace={};
   document.querySelectorAll(".tab").forEach(tab => tab.onclick = () => {
     document.querySelectorAll(".tab,.tab-panel").forEach(item => item.classList.remove("active"));
     tab.classList.add("active"); $(tab.dataset.tab).classList.add("active");
@@ -120,6 +124,11 @@
       let place={};
       try { const placeResponse=await fetch(SERVER+"/location/reverse?latitude="+c.latitude+"&longitude="+c.longitude);
         if(placeResponse.ok) place=await placeResponse.json(); } catch(e) { place={}; }
+      currentPlace=place;
+      const area=place.area_name||place.location_name||"Area name unavailable";
+      $("currentArea").textContent="You are currently in: "+area+(place.address?" | "+place.address:"");
+      if(currentMarker) currentMarker.bindPopup("<b>You are here</b><br><b>Area:</b> "+area+
+        "<br>GPS accuracy: "+c.accuracy.toFixed(1)+" m"+(place.nearby_landmark?"<br>Nearby: "+place.nearby_landmark:"")).openPopup();
       $("status").textContent="Ping/jitter test running...";
       const raw=[]; for(let i=0;i<6;i++) raw.push(await pingOnce()); const values=raw.slice(1);
       const avg=values.reduce((a,b)=>a+b,0)/values.length;
@@ -150,9 +159,13 @@
         (place.nearby_landmark?" | Nearby: "+place.nearby_landmark:"");
       const causes=data.recommendation?.likely_causes||[];
       const checks=data.recommendation?.suggested_checks||[];
-      $("recommendation").textContent="Recommendation: "+(data.recommendation?.action||"N/A")+
-        (causes.length?" | Evidence-based likely cause: "+causes.join("; "):"")+
-        (checks.length?" | Suggested checks: "+checks.join(" "):"");
+      const rec=data.recommendation||{};
+      $("recommendation").className="recommendation-card "+(rec.priority||"").toLowerCase();
+      $("recommendation").innerHTML="<b>"+(rec.action||"Recommendation unavailable")+"</b>"+
+        " <small>Priority: "+(rec.priority||"N/A")+"</small><br>"+(rec.reason||"")+
+        (rec.evidence?.length?"<br><b>Evidence:</b><ul class='list'>"+rec.evidence.map(x=>"<li>"+x+"</li>").join("")+"</ul>":"")+
+        (causes.length?"<b>Likely causes:</b> "+causes.join("; ")+"<br>":"")+
+        (checks.length?"<b>Suggested checks:</b> "+checks.join(" "):"");
       $("result").classList.remove("hidden"); $("status").textContent="Measurement saved successfully.";
       await loadData();
     } catch(e) { $("status").textContent="Error: "+e.message+" GPS permission aur API URL check karein."; }
@@ -176,16 +189,18 @@
     ms.forEach(x=>{const point=[x.latitude,x.longitude]; bounds.push(point); const color=x.quality_category==="Poor"?"#c93636":x.quality_category==="Good"?"#17834b":"#e09f20";
       L.circleMarker(point,{radius:9,color:color,fillColor:color,fillOpacity:.85}).bindPopup("Score: "+x.quality_score+" ("+x.quality_category+")<br>"+
         (x.location_name||x.location_address||"Location name unavailable")+"<br>GPS accuracy: "+x.accuracy+" m<br>"+(x.nearby_landmark?"Nearby: "+x.nearby_landmark+"<br>":"")+
-        (x.recommendation?.action||"N/A")).addTo(markers);});
+        "<b>Area:</b> "+(x.location_name||"Unavailable")+"<br>"+(x.recommendation?.action||"N/A")).addTo(markers);});
     ts.forEach(x=>{const point=[x.latitude,x.longitude];bounds.push(point);L.circleMarker(point,{radius:3,color:"#222",fillColor:"#222",fillOpacity:1}).bindPopup("Real tower: "+x.tower_id).addTo(markers);});
     if(bounds.length) map.fitBounds(bounds,{padding:[15,15],maxZoom:14});
     $("status").title="Backend: "+health.status+" | Towers: "+health.tower_count+" | Population: "+health.population_source;
   }
   $("measure").onclick=measure; $("saveServer").onclick=()=>{const value=$("server").value.trim().replace(/\/$/,"");if(!value)return;localStorage.setItem("apiUrl",value);location.reload();};
-  $("ask").onclick=async()=>{try{const q=$("question").value.trim();if(!q){$("answer").textContent="Question likhein.";return;}const r=await fetch(SERVER+"/ask?question="+encodeURIComponent(q));$("answer").textContent=(await r.json()).answer;}catch(e){$("answer").textContent="Error: "+e.message;}};
-  $("report").onclick=async()=>{const r=await fetch(SERVER+"/report");const b=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="network-quality-report.txt";a.click();};
-  $("exportPoor").onclick=async()=>{try{const r=await fetch(SERVER+"/export/poor-locations.csv");if(!r.ok)throw Error("Export failed");const b=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="poor-network-locations.csv";a.click();URL.revokeObjectURL(a.href);}catch(e){$("answer").textContent="Export error: "+e.message;}};
-  $("exportAll").onclick=async()=>{try{const r=await fetch(SERVER+"/export/all-measurements.csv");if(!r.ok)throw Error("Export failed");const b=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="all-network-measurements.csv";a.click();URL.revokeObjectURL(a.href);}catch(e){$("answer").textContent="Export error: "+e.message;}};
+  function downloadBlob(blob,filename) { const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; a.rel="noopener"; document.body.appendChild(a); a.click(); setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},1000); }
+  $("ask").onclick=async()=>{try{const q=$("question").value.trim();if(!q){$("answer").textContent="Question likhein.";return;}const r=await fetch(SERVER+"/ask?question="+encodeURIComponent(q)+"&t="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("NLP request failed");const data=await r.json();$("answer").innerHTML="<b>"+data.answer+"</b>"+(data.data?.length?"<ul class='list'>"+data.data.slice(0,8).map(x=>"<li>"+(x.location_name||"GPS "+x.latitude.toFixed(5)+", "+x.longitude.toFixed(5))+" — "+(x.recommendation?.action||x.quality_category)+"</li>").join("")+"</ul>":"");}catch(e){$("answer").textContent="NLP error: "+e.message;}};
+  async function downloadEndpoint(path,filename){const r=await fetch(SERVER+path+"?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("Export failed ("+r.status+")");downloadBlob(await r.blob(),filename);}
+  $("report").onclick=async()=>{try{await downloadEndpoint("/report","network-quality-report.txt");$("answer").textContent="Latest report downloaded successfully.";}catch(e){$("answer").textContent="Report error: "+e.message;}};
+  $("exportPoor").onclick=async()=>{try{await downloadEndpoint("/export/poor-locations.csv","poor-network-locations.csv");$("answer").textContent="Latest Poor locations export downloaded successfully.";}catch(e){$("answer").textContent="Poor export error: "+e.message;}};
+  $("exportAll").onclick=async()=>{try{await downloadEndpoint("/export/all-measurements.csv","all-network-measurements.csv");$("answer").textContent="Latest measurements export downloaded successfully.";}catch(e){$("answer").textContent="All export error: "+e.message;}};
   $("clearAll").onclick=async()=>{if(!confirm("Delete all saved measurements permanently? Export them first if you need a copy."))return;try{const r=await fetch(SERVER+"/measurements",{method:"DELETE"});if(!r.ok)throw Error("Delete failed");$("answer").textContent="All saved measurements deleted.";await loadData();}catch(e){$("answer").textContent="Delete error: "+e.message;}};
   loadData().catch(e=>$("status").textContent="Backend unavailable: "+e.message);
   if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});

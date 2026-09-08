@@ -1,4 +1,4 @@
-const CACHE = "telecom-quality-v1";
+const CACHE = "telecom-quality-v2";
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(["./app.html", "./manifest.webmanifest"])));
 });

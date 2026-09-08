@@ -429,6 +429,7 @@ def reverse_location(latitude: float, longitude: float):
     except Exception:
         return {
             "location_name": None,
+            "area_name": None,
             "address": None,
             "nearby_landmark": None,
             "data_source": "UNAVAILABLE",
@@ -449,6 +450,13 @@ def reverse_location(latitude: float, longitude: float):
     )
     return {
         "location_name": location_name,
+        "area_name": (
+            address.get("suburb")
+            or address.get("neighbourhood")
+            or address.get("quarter")
+            or address.get("city_district")
+            or address.get("city")
+        ),
         "address": result.get("display_name"),
         "nearby_landmark": landmark,
         "data_source": "OpenStreetMap Nominatim",
@@ -540,8 +548,16 @@ def ask_question(question: str):
             "and upload (15%). Good is 80-100, Moderate is 60-79, and Poor is 0-59.",
         }
     return {
-        "answer": "Try: show weak areas, which towers have issues, where should we build a new tower, "
-        "show good locations, give me a summary, or how is the score calculated.",
+        "answer": "I can analyze poor areas, tower investigations, new-tower candidates, causes, "
+        "scores, current measurements, or exports. Try: 'show poor areas', "
+        "'which towers need investigation', 'why is the network slow', or 'summary'.",
+        "suggested_questions": [
+            "Show poor areas with tower distance",
+            "Why is the network slow?",
+            "Which towers need investigation?",
+            "Where should we consider a new tower?",
+            "Give me a summary with counts",
+        ],
     }
 
 
@@ -574,7 +590,11 @@ def report():
             f"recommendation={recommendation['action']} | "
             f"reason={recommendation['reason']}"
         )
-    return "\n".join(lines)
+    return PlainTextResponse(
+        content="\ufeff" + "\n".join(lines),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="network-quality-report.txt"'},
+    )
 
 
 @app.get("/export/poor-locations.csv")
@@ -634,9 +654,10 @@ def export_poor_locations():
             item.get("nearby_landmark"),
         ])
     return PlainTextResponse(
-        content=output.getvalue(),
-        media_type="text/csv",
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
         headers={
+            "Cache-Control": "no-store",
             "Content-Disposition": 'attachment; filename="poor-network-locations.csv"'
         },
     )
@@ -672,7 +693,10 @@ def export_all_measurements():
             item.get("nearby_landmark"),
         ])
     return PlainTextResponse(
-        content=output.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="all-network-measurements.csv"'},
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'attachment; filename="all-network-measurements.csv"',
+        },
     )
