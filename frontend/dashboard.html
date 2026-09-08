@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Telecom Network Quality Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; color: #17202a; background: #f5f7fa; }
+        header { padding: 18px; background: #123b5d; color: white; }
+        header h1 { margin: 0 0 6px; font-size: 22px; }
+        header p { margin: 0; font-size: 13px; }
+        main { max-width: 1200px; margin: auto; padding: 16px; }
+        .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+        .card { background: white; border-radius: 8px; padding: 14px; box-shadow: 0 1px 5px #0002; }
+        .card strong { display: block; font-size: 24px; margin-top: 5px; }
+        #map { height: 560px; background: #ddd; border-radius: 8px; }
+        .legend, .notice { background: white; margin-top: 12px; padding: 12px; border-radius: 8px; }
+        .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin: 0 4px 0 10px; }
+        table { width: 100%; border-collapse: collapse; background: white; margin-top: 14px; font-size: 13px; }
+        th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background: #eaf0f5; }
+        @media (max-width: 700px) { .cards { grid-template-columns: repeat(2, 1fr); } #map { height: 460px; } }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Telecom Network Quality Intelligence</h1>
+    <p>Real device measurements and OpenCelliD public tower data. Recommendations are decision-support only.</p>
+</header>
+<main>
+    <div class="cards">
+        <div class="card">Measurements<strong id="total">-</strong></div>
+        <div class="card">Good<strong id="good">-</strong></div>
+        <div class="card">Moderate<strong id="moderate">-</strong></div>
+        <div class="card">Poor<strong id="poor">-</strong></div>
+    </div>
+    <div class="notice">
+        <input id="question" placeholder="Ask: show poor areas" style="width:70%; padding:9px">
+        <button id="askButton" type="button">Ask</button>
+        <button id="reportButton" type="button">Download report</button>
+        <div id="answer"></div>
+    </div>
+    <div id="status" class="notice">Loading live data...</div>
+    <div id="map"></div>
+    <div class="legend">
+        <span class="dot" style="background:#20a464"></span>Good
+        <span class="dot" style="background:#e09f20"></span>Moderate
+        <span class="dot" style="background:#d64545"></span>Poor
+        <span class="dot" style="background:#333"></span>Real tower
+    </div>
+    <table>
+        <thead><tr><th>Location</th><th>Score</th><th>Accuracy</th><th>Nearest tower</th><th>Recommendation</th></tr></thead>
+        <tbody id="rows"></tbody>
+    </table>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<script>
+    const SERVER = "http://127.0.0.1:8001";
+    const map = L.map("map").setView([31.52, 74.30], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+    const layer = L.layerGroup().addTo(map);
+    const colors = { Good: "#20a464", Moderate: "#e09f20", Poor: "#d64545" };
+
+    function safe(value) {
+        return value === null || value === undefined ? "N/A" : String(value);
+    }
+    function popup(measurement) {
+        const tower = measurement.nearest_tower;
+        const recommendation = measurement.recommendation || {};
+        return "<b>Measurement #" + safe(measurement.id) + "</b><br>" +
+            "Quality: " + safe(measurement.quality_score) + " (" + safe(measurement.quality_category) + ")<br>" +
+            "GPS: " + Number(measurement.latitude).toFixed(6) + ", " +
+            Number(measurement.longitude).toFixed(6) + "<br>" +
+            "GPS accuracy: " + safe(measurement.accuracy) + " m<br>" +
+            "Nearest tower: " + (tower ? safe(tower.tower_id) + " (" + safe(tower.distance_km) + " km)" : "N/A") +
+            "<br>Recommendation: " + safe(recommendation.action);
+    }
+    async function loadDashboard() {
+        const [measurementsResponse, towersResponse] = await Promise.all([
+            fetch(SERVER + "/measurements"), fetch(SERVER + "/towers")
+        ]);
+        if (!measurementsResponse.ok || !towersResponse.ok) {
+            throw new Error("Backend data request failed.");
+        }
+        const measurements = (await measurementsResponse.json()).data;
+        const towers = (await towersResponse.json()).data;
+        document.getElementById("total").textContent = measurements.length;
+        document.getElementById("good").textContent = measurements.filter(x => x.quality_category === "Good").length;
+        document.getElementById("moderate").textContent = measurements.filter(x => x.quality_category === "Moderate").length;
+        document.getElementById("poor").textContent = measurements.filter(x => x.quality_category === "Poor").length;
+        layer.clearLayers();
+        const bounds = [];
+        measurements.forEach(measurement => {
+            const point = [measurement.latitude, measurement.longitude];
+            bounds.push(point);
+            const marker = L.circleMarker(point, {
+                radius: 9, color: colors[measurement.quality_category] || "#777",
+                fillColor: colors[measurement.quality_category] || "#777", fillOpacity: 0.8
+            }).bindPopup(popup(measurement)).addTo(layer);
+            if (Number.isFinite(Number(measurement.accuracy)) && measurement.accuracy > 0) {
+                L.circle(point, { radius: measurement.accuracy, color: "#666", weight: 1, fill: false }).addTo(layer);
+            }
+        });
+        towers.forEach(tower => {
+            const point = [tower.latitude, tower.longitude];
+            bounds.push(point);
+            L.circleMarker(point, { radius: 3, color: "#222", fillColor: "#222", fillOpacity: 0.9 })
+                .bindPopup("Tower " + safe(tower.tower_id) + "<br>Source: " + safe(tower.data_source))
+                .addTo(layer);
+        });
+        if (bounds.length) map.fitBounds(bounds, { padding: [20, 20], maxZoom: 14 });
+        const rows = document.getElementById("rows");
+        rows.replaceChildren();
+        measurements.forEach(measurement => {
+            const row = document.createElement("tr");
+            const tower = measurement.nearest_tower;
+            const recommendation = measurement.recommendation || {};
+            [Number(measurement.latitude).toFixed(6) + ", " + Number(measurement.longitude).toFixed(6),
+                safe(measurement.quality_score) + " (" + safe(measurement.quality_category) + ")",
+                safe(measurement.accuracy) + " m",
+                tower ? safe(tower.tower_id) + " / " + safe(tower.distance_km) + " km" : "N/A",
+                safe(recommendation.action)].forEach(value => {
+                    const cell = document.createElement("td"); cell.textContent = value; row.appendChild(cell);
+                });
+            rows.appendChild(row);
+        });
+        document.getElementById("status").textContent =
+            "Live data loaded. Measurement coordinates are device GPS coordinates; circles show reported GPS accuracy.";
+    }
+    document.getElementById("askButton").addEventListener("click", async () => {
+        const question = document.getElementById("question").value;
+        const answerBox = document.getElementById("answer");
+        if (!question.trim()) {
+            answerBox.textContent = "Please enter a question.";
+            return;
+        }
+        try {
+            const response = await fetch(SERVER + "/ask?question=" + encodeURIComponent(question));
+            if (!response.ok) throw new Error("Question request failed.");
+            const result = await response.json();
+            answerBox.textContent = result.answer;
+        } catch (error) {
+            answerBox.textContent = "Error: " + error.message;
+        }
+    });
+    document.getElementById("reportButton").addEventListener("click", async () => {
+        try {
+            const response = await fetch(SERVER + "/report");
+            if (!response.ok) throw new Error("Report request failed.");
+            const blob = await response.blob();
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "telecom-network-quality-report.txt";
+            link.click();
+            URL.revokeObjectURL(link.href);
+        } catch (error) {
+            document.getElementById("answer").textContent = "Error: " + error.message;
+        }
+    });
+    loadDashboard().catch(error => {
+        document.getElementById("status").textContent = "Error: " + error.message +
+            " Start the FastAPI backend and refresh this page.";
+    });
+</script>
+</body>
+</html>

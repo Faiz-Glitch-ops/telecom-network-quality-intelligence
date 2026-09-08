@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stage 1 - GPS Location Test</title>
+</head>
+<body>
+
+    <h2>Stage 1: Real GPS Location Collector</h2>
+
+    <!-- Button jo user click karega location lene ke liye -->
+    <button onclick="getLocation()">Get My Location</button>
+
+    <!-- Yahan result show hoga -->
+    <p id="result">Result yahan dikhega...</p>
+
+    <script>
+        // Yeh function browser se GPS location maangta hai
+        function getLocation() {
+            const resultBox = document.getElementById("result");
+
+            // Check karo ki browser Geolocation support karta hai ya nahi
+            if (!navigator.geolocation) {
+                resultBox.innerHTML = "Sorry, aapka browser GPS support nahi karta.";
+                return;
+            }
+
+            resultBox.innerHTML = "Location dhoond rahe hain...";
+
+            // getCurrentPosition ek baar location leta hai
+            // success function aur error function dono deta hai
+            navigator.geolocation.getCurrentPosition(showPosition, showError);
+        }
+
+        // Yeh function tab chalta hai jab location successfully mil jaye
+        function showPosition(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const accuracy = position.coords.accuracy; // meters mein error margin
+            const timestamp = new Date(position.timestamp).toLocaleString();
+
+            document.getElementById("result").innerHTML =
+                "DATA SOURCE: REAL DEVICE<br>" +
+                "Latitude: " + lat + "<br>" +
+                "Longitude: " + lon + "<br>" +
+                "Accuracy: " + accuracy + " meters<br>" +
+                "Time: " + timestamp;
+        }
+
+        // Yeh function tab chalta hai jab koi error aaye (permission deny, timeout, etc)
+        function showError(error) {
+            const resultBox = document.getElementById("result");
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    resultBox.innerHTML = "Aapne location permission deny kar di.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    resultBox.innerHTML = "Location information available nahi hai.";
+                    break;
+                case error.TIMEOUT:
+                    resultBox.innerHTML = "Location dhoondne mein time zyada lag gaya.";
+                    break;
+                default:
+                    resultBox.innerHTML = "Kuch unknown error aa gaya.";
+            }
+        }
+    </script>
+
+</body>
+</html>

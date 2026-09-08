@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stage 2 - Full Network Measurement</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+        button { padding: 12px 20px; font-size: 16px; margin-bottom: 15px; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #result { background: #f4f4f4; padding: 15px; border-radius: 8px; white-space: pre-line; }
+    </style>
+</head>
+<body>
+
+    <h2>Stage 2: Real Network Measurement</h2>
+
+    <p>Server: <code id="serverUrl">http://127.0.0.1:8000</code></p>
+
+    <button id="runButton" type="button" onclick="runFullMeasurement()">Run Full Measurement</button>
+
+    <p id="result">Result will appear here...</p>
+
+    <script>
+        const SERVER = "http://127.0.0.1:8001";
+
+        // Flag that tracks whether a measurement is already running.
+        // This prevents a double-click from triggering a duplicate run.
+        let isRunning = false;
+
+        async function runFullMeasurement() {
+            if (isRunning) {
+                return; // already running, ignore this click
+            }
+
+            const button = document.getElementById("runButton");
+            const resultBox = document.getElementById("result");
+
+            isRunning = true;
+            button.disabled = true;
+            resultBox.innerHTML = "Step 1: Getting location...";
+
+            try {
+                // Step 1: Get GPS location
+                const position = await getPosition();
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                const accuracy = position.coords.accuracy;
+
+                // Step 2: Measure ping + jitter.
+                // We run 6 pings and discard the first one — the first request is
+                // always slower due to connection cold-start (TCP handshake), which
+                // would otherwise inflate both the average ping and the jitter.
+                resultBox.innerHTML = "Step 2: Running ping test...";
+                const rawPingResults = await measurePingMultiple(6);
+                const pingResults = rawPingResults.slice(1); // drop the first (warm-up) ping
+                const avgPing = average(pingResults);
+                const jitter = calculateJitter(pingResults);
+
+                // Step 3: Measure download speed
+                resultBox.innerHTML = "Step 3: Running download speed test...";
+                const downloadSpeed = await measureDownloadSpeed();
+
+                // Step 4: Network type (if the browser provides it)
+                const networkType = getNetworkType();
+
+                // Step 5: Show all results
+                resultBox.innerHTML =
+                    "DATA SOURCE: REAL DEVICE\n" +
+                    "Latitude: " + lat.toFixed(6) + "\n" +
+                    "Longitude: " + lon.toFixed(6) + "\n" +
+                    "Accuracy: " + accuracy.toFixed(1) + " m\n" +
+                    "Ping (avg): " + avgPing.toFixed(1) + " ms\n" +
+                    "Jitter: " + jitter.toFixed(1) + " ms\n" +
+                    "Download Speed: " + downloadSpeed.toFixed(2) + " Mbps\n" +
+                    "Network Type: " + networkType + "\n\n" +
+                    "Sending to backend...";
+
+                // Step 6: Send to backend (only once)
+                const backendResponse = await sendToBackend({
+                    latitude: lat,
+                    longitude: lon,
+                    accuracy: accuracy,
+                    download_speed: downloadSpeed,
+                    ping: avgPing,
+                    jitter: jitter,
+                    network_type: networkType,
+                    data_source: "REAL DEVICE"
+                });
+
+                // Replace "Sending to backend..." with the final confirmation,
+                // including the Quality Score that the backend calculated
+                resultBox.innerHTML = resultBox.innerHTML.replace(
+                    "Sending to backend...",
+                    "Quality Score: " + backendResponse.quality_score + " (" + backendResponse.quality_category + ")\n\n" +
+                    "Saved to backend successfully."
+                );
+
+            } catch (error) {
+                resultBox.innerHTML = "Error: " + error.message;
+            } finally {
+                // Whether it succeeded or failed, re-enable the button
+                isRunning = false;
+                button.disabled = false;
+            }
+        }
+
+        function getPosition() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error("This browser does not provide GPS location."));
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 20000,
+                    maximumAge: 0
+                });
+            });
+        }
+
+        async function measureOnePing() {
+            const start = performance.now();
+            await fetch(SERVER + "/ping");
+            const end = performance.now();
+            return end - start;
+        }
+
+        async function measurePingMultiple(count) {
+            let results = [];
+            for (let i = 0; i < count; i++) {
+                const p = await measureOnePing();
+                results.push(p);
+            }
+            return results;
+        }
+
+        function average(arr) {
+            const sum = arr.reduce((a, b) => a + b, 0);
+            return sum / arr.length;
+        }
+
+        function calculateJitter(pings) {
+            let totalDiff = 0;
+            for (let i = 1; i < pings.length; i++) {
+                totalDiff += Math.abs(pings[i] - pings[i - 1]);
+            }
+            return totalDiff / (pings.length - 1);
+        }
+
+        async function measureDownloadSpeed() {
+            const start = performance.now();
+            const response = await fetch(SERVER + "/testfile");
+            const data = await response.blob();
+            const end = performance.now();
+
+            const fileSizeBits = data.size * 8;
+            const durationSeconds = (end - start) / 1000;
+            return (fileSizeBits / durationSeconds) / 1_000_000; // Mbps
+        }
+
+        function getNetworkType() {
+            if (navigator.connection && navigator.connection.effectiveType) {
+                return navigator.connection.effectiveType;
+            }
+            return "unknown";
+        }
+
+        async function sendToBackend(measurement) {
+            const response = await fetch(SERVER + "/measurements", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(measurement)
+            });
+            if (!response.ok) {
+                throw new Error("Backend rejected the measurement (HTTP " + response.status + ").");
+            }
+            return response.json();
+        }
+    </script>
+
+</body>
+</html>

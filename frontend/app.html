@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#123b5d">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <title>Telecom Network Quality</title>
+  <style>
+    :root { --blue:#123b5d; --blue2:#1d6fa5; --green:#17834b; --red:#c93636; --orange:#ed8b24; --bg:#eef4fa; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:#17202a;
+      font:15px Arial,sans-serif; padding-bottom:28px; }
+    header { background:linear-gradient(135deg,var(--blue),#2387b8); color:#fff; padding:22px 16px 18px; }
+    header h1 { margin:0 0 5px; font-size:21px; } header p { margin:0; opacity:.9; font-size:13px; }
+    main { max-width:900px; margin:auto; padding:12px; } section { margin-bottom:12px; }
+    .card { background:#fff; border-radius:16px; padding:17px; box-shadow:0 3px 12px #123b5d18; }
+    .tabs { display:flex; gap:7px; overflow-x:auto; padding:2px 0 10px; }
+    .tab { flex:1; min-width:100px; background:#dceaf5; color:var(--blue); }
+    .tab.active { background:var(--blue); color:#fff; }
+    .tab-panel { display:none; } .tab-panel.active { display:block; }
+    button { border:0; border-radius:10px; padding:13px 16px; font-weight:bold; cursor:pointer; }
+    .primary { width:100%; background:var(--blue); color:#fff; font-size:17px; }
+    button:disabled { opacity:.55; cursor:not-allowed; } input { width:100%; padding:12px;
+      border:1px solid #ccd5df; border-radius:9px; margin:7px 0; }
+    .hero { text-align:center; background:linear-gradient(135deg,#e5f5ff,#fff); }
+    .score { text-align:center; font-size:58px; font-weight:bold; color:var(--green); }
+    .score.poor { color:var(--red); } .muted { color:#5d6d7e; font-size:13px; }
+    #map { height:330px; border-radius:12px; overflow:hidden; } .grid { display:grid;
+      grid-template-columns:repeat(2,1fr); gap:8px; } .stat { background:#f0f4f8; padding:10px;
+      border-radius:9px; } .stat b { display:block; font-size:19px; margin-top:3px; }
+    .hidden { display:none; } .result-line { margin:7px 0; } table { width:100%; border-collapse:collapse;
+      font-size:12px; } td,th { padding:8px 4px; text-align:left; border-bottom:1px solid #e2e7ec; }
+    @media(min-width:600px) { .grid { grid-template-columns:repeat(4,1fr); } }
+  </style>
+</head>
+<body>
+<header><h1>Telecom Network Quality</h1><p>Real GPS + real connection test. Decision-support only.</p></header>
+<main>
+  <div class="tabs">
+    <button class="tab active" data-tab="measureTab">Measure</button>
+    <button class="tab" data-tab="insightsTab">Insights</button>
+    <button class="tab" data-tab="mapTab">Live Map</button>
+    <button class="tab" data-tab="settingsTab">Settings</button>
+  </div>
+  <section id="measureTab" class="tab-panel active card hero">
+    <button id="measure" class="primary">Measure My Current Location</button>
+    <p id="status" class="muted">Use mobile data, allow GPS, then start a real network test.</p>
+    <div id="result" class="hidden">
+      <div id="score" class="score">-</div><div id="category" style="text-align:center;font-weight:bold"></div>
+      <div class="grid" style="margin-top:12px">
+        <div class="stat">Download<b id="download">-</b></div><div class="stat">Upload<b id="upload">-</b></div>
+        <div class="stat">Ping<b id="ping">-</b></div><div class="stat">Jitter<b id="jitter">-</b></div>
+        <div class="stat">GPS accuracy<b id="accuracy">-</b></div>
+      </div>
+      <p id="location" class="muted"></p><p id="place" class="result-line"></p><p id="recommendation" class="result-line"></p>
+    </div>
+  </section>
+  <section id="insightsTab" class="tab-panel card"><h3>Ask Network Intelligence</h3>
+    <p class="muted">Ask a question in plain English. The answer is based on saved measurements.</p>
+    <input id="question" placeholder="Which towers need investigation?">
+    <div class="grid">
+      <button class="quick" data-question="Show poor areas">Poor areas</button>
+      <button class="quick" data-question="Which towers need investigation?">Tower investigation</button>
+      <button class="quick" data-question="Show weak locations and nearest tower distance">Weak locations + tower distance</button>
+      <button class="quick" data-question="Where should we consider a new tower?">New tower candidates</button>
+      <button class="quick" data-question="How many measurements?">Measurement count</button>
+      <button class="quick" data-question="Give me a summary">Summary</button>
+      <button class="quick" data-question="How is the quality score calculated?">Score logic</button>
+    </div>
+    <button id="ask" class="primary" style="margin-top:10px">Ask Recommendation</button><p id="answer" class="result-line"></p>
+    <hr><h3>Saved measurements</h3><div class="grid">
+    <div class="stat">Total<b id="total">-</b></div><div class="stat">Good<b id="good">-</b></div>
+    <div class="stat">Moderate<b id="moderate">-</b></div><div class="stat">Poor<b id="poor">-</b></div>
+  </div>
+  <h3>Area confidence</h3>
+  <div id="areas" class="muted">Loading area summaries...</div>
+  <button id="report" class="primary" style="margin-top:12px">Download Report</button>
+  <button id="exportPoor" class="primary" style="margin-top:8px;background:#c93636">Export Poor Locations to Excel</button>
+  <button id="exportAll" class="primary" style="margin-top:8px;background:#17834b">Export All Measurements to Excel</button>
+  <button id="clearAll" class="primary" style="margin-top:8px;background:#7b1e2b">Delete All Saved Measurements</button>
+  <p class="muted">The Excel-compatible CSV includes exact GPS coordinates, date/time, score, network metrics, tower and recommendation.</p></section>
+  <section id="mapTab" class="tab-panel card"><h3>Live Network Map</h3><p class="muted">Red = poor, amber = moderate, green = good, black = real public tower.</p><div id="map"></div></section>
+  <section id="settingsTab" class="tab-panel card"><b>Backend connection</b><input id="server" placeholder="https://your-api.example.com">
+    <button id="saveServer" class="primary">Save API URL</button><p class="muted">Vercel frontend ke liye deployed FastAPI URL yahan save karein.</p></section>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const defaultServer = localStorage.getItem("apiUrl") || "http://127.0.0.1:8001";
+  let SERVER = defaultServer.replace(/\/$/, ""); document.getElementById("server").value = SERVER;
+  const $ = id => document.getElementById(id);
+  if (/^(http:\/\/)?(127\.0\.0\.1|localhost)(:|\/|$)/i.test(SERVER)) {
+    $("status").textContent = "Demo warning: the backend is on this laptop. Speed may measure the local computer, not mobile internet. Use a deployed API URL on your phone.";
+  }
+  const map = L.map("map").setView([31.52,74.30],11);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {maxZoom:19,attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
+  const markers = L.layerGroup().addTo(map); let currentMarker=null; let running=false;
+  document.querySelectorAll(".tab").forEach(tab => tab.onclick = () => {
+    document.querySelectorAll(".tab,.tab-panel").forEach(item => item.classList.remove("active"));
+    tab.classList.add("active"); $(tab.dataset.tab).classList.add("active");
+    if (tab.dataset.tab === "mapTab") setTimeout(() => map.invalidateSize(), 50);
+  });
+  document.querySelectorAll(".quick").forEach(button => button.onclick = () => {
+    $("question").value = button.dataset.question;
+    document.querySelector('[data-tab="insightsTab"]').click();
+  });
+  function position() { return new Promise((resolve,reject) => navigator.geolocation.getCurrentPosition(resolve,reject,
+    {enableHighAccuracy:true,timeout:20000,maximumAge:0})); }
+  async function pingOnce() { const start=performance.now(); const r=await fetch(SERVER+"/ping"); if(!r.ok) throw Error("Ping failed"); return performance.now()-start; }
+  async function measure() {
+    $("measure").disabled=true; $("status").textContent="Getting your GPS location...";
+    try {
+      const p=await position(), c=p.coords;
+      const currentPoint=[c.latitude,c.longitude];
+      if (currentMarker) map.removeLayer(currentMarker);
+      currentMarker=L.circleMarker(currentPoint,{radius:11,color:"#1769aa",fillColor:"#39a9ff",fillOpacity:.95})
+        .bindPopup("<b>You are here</b><br>GPS accuracy: "+c.accuracy.toFixed(1)+" m").addTo(map).openPopup();
+      map.setView(currentPoint,15);
+      let place={};
+      try { const placeResponse=await fetch(SERVER+"/location/reverse?latitude="+c.latitude+"&longitude="+c.longitude);
+        if(placeResponse.ok) place=await placeResponse.json(); } catch(e) { place={}; }
+      $("status").textContent="Ping/jitter test running...";
+      const raw=[]; for(let i=0;i<6;i++) raw.push(await pingOnce()); const values=raw.slice(1);
+      const avg=values.reduce((a,b)=>a+b,0)/values.length;
+      const jitter=values.slice(1).reduce((a,b,i)=>a+Math.abs(b-values[i]),0)/(values.length-1);
+      $("status").textContent="Download speed test chal raha hai...";
+      const start=performance.now(), response=await fetch(SERVER+"/testfile?cache="+Date.now());
+      if(!response.ok) throw Error("Download test failed"); const blob=await response.blob();
+      const speed=blob.size*8/((performance.now()-start)/1000)/1000000;
+      $("status").textContent="Upload speed test running...";
+      const uploadBytes=new Uint8Array(256*1024);
+      const uploadStart=performance.now();
+      const uploadResponse=await fetch(SERVER+"/upload-test",{method:"POST",body:uploadBytes});
+      if(!uploadResponse.ok) throw Error("Upload test failed");
+      const uploadSpeed=uploadBytes.byteLength*8/((performance.now()-uploadStart)/1000)/1000000;
+      $("status").textContent="Saving result...";
+      const saved=await fetch(SERVER+"/measurements",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({latitude:c.latitude,longitude:c.longitude,accuracy:c.accuracy,location_name:place.location_name||null,
+          location_address:place.address||null,nearby_landmark:place.nearby_landmark||null,download_speed:speed,
+          upload_speed:uploadSpeed,ping:avg,jitter:jitter,network_type:navigator.connection?.effectiveType||"unknown",data_source:"REAL DEVICE"})});
+      if(!saved.ok) throw Error("Backend ne measurement reject ki"); const data=await saved.json();
+      $("score").textContent=data.quality_score===null?"N/A":data.quality_score;
+      $("category").textContent=data.quality_category; $("score").className="score "+(data.quality_category==="Poor"?"poor":"");
+      $("download").textContent=speed.toFixed(2)+" Mbps"; $("upload").textContent=uploadSpeed.toFixed(2)+" Mbps";
+      $("ping").textContent=avg.toFixed(1)+" ms";
+      $("jitter").textContent=jitter.toFixed(1)+" ms"; $("accuracy").textContent=c.accuracy.toFixed(1)+" m";
+      $("location").textContent="GPS: "+c.latitude.toFixed(6)+", "+c.longitude.toFixed(6);
+      $("place").textContent=(place.location_name||place.address||"Readable place name unavailable")+
+        (place.nearby_landmark?" | Nearby: "+place.nearby_landmark:"");
+      const causes=data.recommendation?.likely_causes||[];
+      const checks=data.recommendation?.suggested_checks||[];
+      $("recommendation").textContent="Recommendation: "+(data.recommendation?.action||"N/A")+
+        (causes.length?" | Evidence-based likely cause: "+causes.join("; "):"")+
+        (checks.length?" | Suggested checks: "+checks.join(" "):"");
+      $("result").classList.remove("hidden"); $("status").textContent="Measurement saved successfully.";
+      await loadData();
+    } catch(e) { $("status").textContent="Error: "+e.message+" GPS permission aur API URL check karein."; }
+    finally { $("measure").disabled=false; }
+  }
+  async function loadData() {
+    const [mr,tr,hr,ar]=await Promise.all([fetch(SERVER+"/measurements"),fetch(SERVER+"/towers"),fetch(SERVER+"/health"),fetch(SERVER+"/areas")]);
+    if(!mr.ok||!tr.ok||!hr.ok||!ar.ok) throw Error("Live data load failed"); const ms=(await mr.json()).data, ts=(await tr.json()).data;
+    const health=await hr.json(), areas=(await ar.json()).data;
+    $("total").textContent=ms.length; $("good").textContent=ms.filter(x=>x.quality_category==="Good").length;
+    $("moderate").textContent=ms.filter(x=>x.quality_category==="Moderate").length; $("poor").textContent=ms.filter(x=>x.quality_category==="Poor").length;
+    $("areas").replaceChildren();
+    if (!areas.length) $("areas").textContent="No area summaries yet.";
+    areas.slice(0, 10).forEach(area => {
+      const item=document.createElement("div");
+      item.className="stat"; item.style.marginTop="7px";
+      item.textContent=area.status+" | "+area.measurement_count+" reading(s) | Poor: "+area.poor_percentage+"% | Average score: "+(area.average_quality_score ?? "N/A");
+      $("areas").appendChild(item);
+    });
+    markers.clearLayers(); const bounds=[];
+    ms.forEach(x=>{const point=[x.latitude,x.longitude]; bounds.push(point); const color=x.quality_category==="Poor"?"#c93636":x.quality_category==="Good"?"#17834b":"#e09f20";
+      L.circleMarker(point,{radius:9,color:color,fillColor:color,fillOpacity:.85}).bindPopup("Score: "+x.quality_score+" ("+x.quality_category+")<br>"+
+        (x.location_name||x.location_address||"Location name unavailable")+"<br>GPS accuracy: "+x.accuracy+" m<br>"+(x.nearby_landmark?"Nearby: "+x.nearby_landmark+"<br>":"")+
+        (x.recommendation?.action||"N/A")).addTo(markers);});
+    ts.forEach(x=>{const point=[x.latitude,x.longitude];bounds.push(point);L.circleMarker(point,{radius:3,color:"#222",fillColor:"#222",fillOpacity:1}).bindPopup("Real tower: "+x.tower_id).addTo(markers);});
+    if(bounds.length) map.fitBounds(bounds,{padding:[15,15],maxZoom:14});
+    $("status").title="Backend: "+health.status+" | Towers: "+health.tower_count+" | Population: "+health.population_source;
+  }
+  $("measure").onclick=measure; $("saveServer").onclick=()=>{const value=$("server").value.trim().replace(/\/$/,"");if(!value)return;localStorage.setItem("apiUrl",value);location.reload();};
+  $("ask").onclick=async()=>{try{const q=$("question").value.trim();if(!q){$("answer").textContent="Question likhein.";return;}const r=await fetch(SERVER+"/ask?question="+encodeURIComponent(q));$("answer").textContent=(await r.json()).answer;}catch(e){$("answer").textContent="Error: "+e.message;}};
+  $("report").onclick=async()=>{const r=await fetch(SERVER+"/report");const b=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="network-quality-report.txt";a.click();};
+  $("exportPoor").onclick=async()=>{try{const r=await fetch(SERVER+"/export/poor-locations.csv");if(!r.ok)throw Error("Export failed");const b=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="poor-network-locations.csv";a.click();URL.revokeObjectURL(a.href);}catch(e){$("answer").textContent="Export error: "+e.message;}};
+  $("exportAll").onclick=async()=>{try{const r=await fetch(SERVER+"/export/all-measurements.csv");if(!r.ok)throw Error("Export failed");const b=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="all-network-measurements.csv";a.click();URL.revokeObjectURL(a.href);}catch(e){$("answer").textContent="Export error: "+e.message;}};
+  $("clearAll").onclick=async()=>{if(!confirm("Delete all saved measurements permanently? Export them first if you need a copy."))return;try{const r=await fetch(SERVER+"/measurements",{method:"DELETE"});if(!r.ok)throw Error("Delete failed");$("answer").textContent="All saved measurements deleted.";await loadData();}catch(e){$("answer").textContent="Delete error: "+e.message;}};
+  loadData().catch(e=>$("status").textContent="Backend unavailable: "+e.message);
+  if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "Telecom Network Quality",
+  "short_name": "NetQuality",
+  "start_url": "./app.html",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#123b5d",
+  "description": "Real device network quality measurement and location intelligence"
+}

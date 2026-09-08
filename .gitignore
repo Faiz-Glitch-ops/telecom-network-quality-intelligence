@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+*.pyc
+backend/network_data.db
+data/population/pak_pop_2025_CN_100m_R2025A_v1.tif
