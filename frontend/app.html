@@ -82,10 +82,10 @@
   <h3>Area confidence</h3>
   <div id="areas" class="muted">Loading area summaries...</div>
   <button id="exportPoor" class="primary" style="margin-top:8px;background:#c93636">Export Poor Locations to Excel</button>
-  <button id="exportAll" class="primary" style="margin-top:8px;background:#17834b">Export All Measurements to Excel</button>
+  <button id="exportAll" class="primary" style="margin-top:8px;background:#17834b">Download Complete Excel Sheet</button>
   <p id="exportStatus" class="muted download-status"></p>
   <button id="clearAll" class="primary" style="margin-top:8px;background:#7b1e2b">Delete All Saved Measurements</button>
-  <p class="muted">The Excel-compatible CSV includes exact GPS coordinates, date/time, score, network metrics, tower and recommendation.</p></section>
+  <p class="muted">Har successful measurement automatically save hoti hai. Complete sheet mein Good, Moderate aur Poor sab locations ki latest readings included hoti hain.</p></section>
   <section id="mapTab" class="tab-panel card"><h3>Live Network Map</h3><p id="currentArea" class="recommendation-card">Current area will appear here after GPS is allowed.</p><p class="muted">Red = poor, amber = moderate, green = good, black = real public tower.</p><div id="map"></div></section>
   <section id="settingsTab" class="tab-panel card"><b>Backend connection</b><input id="server" placeholder="https://your-api.example.com">
     <button id="saveServer" class="primary">Save API URL</button><p class="muted">Vercel frontend ke liye deployed FastAPI URL yahan save karein.</p></section>
@@ -214,7 +214,7 @@
   $("ask").onclick=async()=>{try{const q=$("question").value.trim();if(!q){$("answer").textContent="Question likhein.";return;}const r=await fetch(SERVER+"/ask?question="+encodeURIComponent(q)+"&t="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("NLP request failed");const data=await r.json();$("answer").innerHTML="<b>"+data.answer+"</b>"+(data.data?.length?"<ul class='list'>"+data.data.slice(0,8).map(x=>"<li>"+(x.location_name||"GPS "+x.latitude.toFixed(5)+", "+x.longitude.toFixed(5))+" — "+(x.recommendation?.action||x.quality_category)+"</li>").join("")+"</ul>":"");}catch(e){$("answer").textContent="NLP error: "+e.message;}};
   async function downloadEndpoint(path,filename,label){const r=await fetch(SERVER+path+"?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("Export failed ("+r.status+")");const blob=await r.blob();downloadBlob(blob,filename);$("exportStatus").textContent=label+" downloaded. Check your browser Downloads folder.";return blob;}
   $("exportPoor").onclick=async()=>{try{const r=await fetch(SERVER+"/measurements?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("Could not load latest measurements");const data=await r.json();const poorCount=data.data.filter(x=>x.quality_category==="Poor").length;if(!poorCount){$("exportStatus").textContent="No Poor measurements are currently saved.";return;}await downloadEndpoint("/export/poor-locations.csv","poor-network-locations.csv",poorCount+" Poor location(s)");}catch(e){$("exportStatus").textContent="Poor export error: "+e.message;}};
-  $("exportAll").onclick=async()=>{try{await downloadEndpoint("/export/all-measurements.csv","all-network-measurements.csv","All measurements");}catch(e){$("exportStatus").textContent="All export error: "+e.message;}};
+  $("exportAll").onclick=async()=>{try{await downloadEndpoint("/export/all-measurements.csv","telecom-network-all-measurements.csv","Complete measurement sheet");}catch(e){$("exportStatus").textContent="Complete sheet error: "+e.message;}};
   $("clearAll").onclick=async()=>{if(!confirm("Delete all saved measurements permanently? Export them first if you need a copy."))return;try{const r=await fetch(SERVER+"/measurements",{method:"DELETE"});if(!r.ok)throw Error("Delete failed");$("answer").textContent="All saved measurements deleted.";await loadData();}catch(e){$("answer").textContent="Delete error: "+e.message;}};
   loadData().catch(e=>$("status").textContent="Backend unavailable: "+e.message);
   if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
