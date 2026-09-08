@@ -29,6 +29,7 @@
     .recommendation-card { background:#f3f8fc; border-left:5px solid var(--blue2); padding:12px; border-radius:9px; line-height:1.45; }
     .recommendation-card.high { border-left-color:var(--red); background:#fff2f2; }
     .recommendation-card.medium { border-left-color:var(--orange); background:#fff8eb; }
+    .locate-button { margin:10px 0; background:#1683d8; color:#fff; width:100%; }
     .list { margin:6px 0 0 18px; padding:0; } .download-status { min-height:20px; }
     .current-pin { width:18px; height:18px; border-radius:50% 50% 50% 0; background:#1683d8; border:3px solid #fff; box-shadow:0 2px 8px #123b5d99; transform:rotate(-45deg); }
     .current-pin::after { content:""; display:block; width:5px; height:5px; margin:4px auto; border-radius:50%; background:#fff; }
@@ -81,12 +82,11 @@
   </div>
   <h3>Area confidence</h3>
   <div id="areas" class="muted">Loading area summaries...</div>
-  <button id="exportPoor" class="primary" style="margin-top:8px;background:#c93636">Export Poor Locations to Excel</button>
   <button id="exportAll" class="primary" style="margin-top:8px;background:#17834b">Download Complete Excel Sheet</button>
   <p id="exportStatus" class="muted download-status"></p>
   <button id="clearAll" class="primary" style="margin-top:8px;background:#7b1e2b">Delete All Saved Measurements</button>
   <p class="muted">Har successful measurement automatically save hoti hai. Complete sheet mein Good, Moderate aur Poor sab locations ki latest readings included hoti hain.</p></section>
-  <section id="mapTab" class="tab-panel card"><h3>Live Network Map</h3><p id="currentArea" class="recommendation-card">Current area will appear here after GPS is allowed.</p><p class="muted">Red = poor, amber = moderate, green = good, black = real public tower.</p><div id="map"></div></section>
+  <section id="mapTab" class="tab-panel card"><h3>Live Network Map</h3><p id="currentArea" class="recommendation-card">Current area will appear here after GPS is allowed.</p><button id="locateMe" class="locate-button">Locate Me on Map</button><p id="locateStatus" class="muted">Tap the button to center the map on your current GPS location.</p><p class="muted">Red = poor, amber = moderate, green = good, black = real public tower.</p><div id="map"></div></section>
   <section id="settingsTab" class="tab-panel card"><b>Backend connection</b><input id="server" placeholder="https://your-api.example.com">
     <button id="saveServer" class="primary">Save API URL</button><p class="muted">Vercel frontend ke liye deployed FastAPI URL yahan save karein.</p></section>
 </main>
@@ -101,7 +101,9 @@
   const map = L.map("map").setView([31.52,74.30],11);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     {maxZoom:19,attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
-  const markers = L.layerGroup().addTo(map); let currentMarker=null; let running=false; let currentPlace={};
+  const measurementMarkers = L.layerGroup().addTo(map);
+  const towerMarkers = L.layerGroup().addTo(map);
+  let currentMarker=null; let running=false; let currentPlace={};
   const currentPin=L.divIcon({className:"",html:"<div class='current-pin'></div>",iconSize:[18,18],iconAnchor:[9,18]});
   document.querySelectorAll(".tab").forEach(tab => tab.onclick = () => {
     document.querySelectorAll(".tab,.tab-panel").forEach(item => item.classList.remove("active"));
@@ -116,6 +118,7 @@
     {enableHighAccuracy:true,timeout:20000,maximumAge:0})); }
   async function updateCurrentLocation(c, centerMap) {
     const point=[c.latitude,c.longitude];
+    const gpsLabel="GPS "+c.latitude.toFixed(6)+", "+c.longitude.toFixed(6);
     if (currentMarker) currentMarker.setLatLng(point);
     else currentMarker=L.marker(point,{icon:currentPin,zIndexOffset:1000}).addTo(map);
     if (centerMap) map.setView(point,15);
@@ -124,12 +127,30 @@
       const response=await fetch(SERVER+"/location/reverse?latitude="+c.latitude+"&longitude="+c.longitude+"&t="+Date.now(),{cache:"no-store"});
       if(response.ok) place=await response.json();
     } catch(e) { place={}; }
+    if (!place.location_name && !place.area_name && !place.address) {
+      place={location_name:gpsLabel,address:gpsLabel};
+    }
     currentPlace=place;
     const area=place.area_name||place.location_name||"Area name unavailable";
     $("currentArea").textContent="You are here: "+area+(place.address?" | "+place.address:"");
     currentMarker.bindPopup("<b>You are here</b><br><b>Area:</b> "+area+
       "<br>GPS accuracy: "+c.accuracy.toFixed(1)+" m"+(place.nearby_landmark?"<br>Nearby: "+place.nearby_landmark:""));
     return place;
+  }
+  async function locateMe() {
+    const button=$("locateMe");
+    button.disabled=true; $("locateStatus").textContent="Finding your exact GPS location...";
+    try {
+      if (!("geolocation" in navigator)) throw Error("This browser does not support GPS.");
+      const p=await position();
+      await updateCurrentLocation(p.coords,true);
+      currentMarker.openPopup();
+      $("locateStatus").textContent="Location found. Blue marker shows where you are.";
+    } catch(e) {
+      $("locateStatus").textContent="Could not find location: "+e.message+" GPS permission and phone location settings check karein.";
+    } finally {
+      button.disabled=false;
+    }
   }
   if ("geolocation" in navigator) {
     navigator.geolocation.watchPosition(
@@ -187,7 +208,8 @@
     finally { $("measure").disabled=false; }
   }
   async function loadData() {
-    const [mr,tr,hr,ar]=await Promise.all([fetch(SERVER+"/measurements"),fetch(SERVER+"/towers"),fetch(SERVER+"/health"),fetch(SERVER+"/areas")]);
+    const requestOptions={cache:"no-store"};
+    const [mr,tr,hr,ar]=await Promise.all([fetch(SERVER+"/measurements?t="+Date.now(),requestOptions),fetch(SERVER+"/towers?t="+Date.now(),requestOptions),fetch(SERVER+"/health?t="+Date.now(),requestOptions),fetch(SERVER+"/areas?t="+Date.now(),requestOptions)]);
     if(!mr.ok||!tr.ok||!hr.ok||!ar.ok) throw Error("Live data load failed"); const ms=(await mr.json()).data, ts=(await tr.json()).data;
     const health=await hr.json(), areas=(await ar.json()).data;
     $("total").textContent=ms.length; $("good").textContent=ms.filter(x=>x.quality_category==="Good").length;
@@ -200,20 +222,19 @@
       item.textContent=area.status+" | "+area.measurement_count+" reading(s) | Poor: "+area.poor_percentage+"% | Average score: "+(area.average_quality_score ?? "N/A");
       $("areas").appendChild(item);
     });
-    markers.clearLayers(); const bounds=[];
-    ms.forEach(x=>{const point=[x.latitude,x.longitude]; bounds.push(point); const color=x.quality_category==="Poor"?"#c93636":x.quality_category==="Good"?"#17834b":"#e09f20";
+    measurementMarkers.clearLayers(); towerMarkers.clearLayers(); const measurementBounds=[];
+    ms.forEach(x=>{const point=[x.latitude,x.longitude]; measurementBounds.push(point); const color=x.quality_category==="Poor"?"#c93636":x.quality_category==="Good"?"#17834b":"#e09f20";
       L.circleMarker(point,{radius:9,color:color,fillColor:color,fillOpacity:.85}).bindPopup("Score: "+x.quality_score+" ("+x.quality_category+")<br>"+
         (x.location_name||x.location_address||"Location name unavailable")+"<br>GPS accuracy: "+x.accuracy+" m<br>"+(x.nearby_landmark?"Nearby: "+x.nearby_landmark+"<br>":"")+
-        "<b>Area:</b> "+(x.location_name||"Unavailable")+"<br>"+(x.recommendation?.action||"N/A")).addTo(markers);});
-    ts.forEach(x=>{const point=[x.latitude,x.longitude];bounds.push(point);L.circleMarker(point,{radius:3,color:"#222",fillColor:"#222",fillOpacity:1}).bindPopup("Real tower: "+x.tower_id).addTo(markers);});
-    if(bounds.length) map.fitBounds(bounds,{padding:[15,15],maxZoom:14});
+        "<b>Area:</b> "+(x.location_name||"Unavailable")+"<br>"+(x.recommendation?.action||"N/A")).addTo(measurementMarkers);});
+    ts.forEach(x=>{const point=[x.latitude,x.longitude];L.circleMarker(point,{radius:3,color:"#222",fillColor:"#222",fillOpacity:1}).bindPopup("Real tower: "+x.tower_id).addTo(towerMarkers);});
+    if(measurementBounds.length) map.fitBounds(measurementBounds,{padding:[30,30],maxZoom:18});
     $("status").title="Backend: "+health.status+" | Towers: "+health.tower_count+" | Population: "+health.population_source;
   }
-  $("measure").onclick=measure; $("saveServer").onclick=()=>{const value=$("server").value.trim().replace(/\/$/,"");if(!value)return;localStorage.setItem("apiUrl",value);location.reload();};
+  $("measure").onclick=measure; $("locateMe").onclick=locateMe; $("saveServer").onclick=()=>{const value=$("server").value.trim().replace(/\/$/,"");if(!value)return;localStorage.setItem("apiUrl",value);location.reload();};
   function downloadBlob(blob,filename) { const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; a.rel="noopener"; document.body.appendChild(a); a.click(); setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},1000); }
   $("ask").onclick=async()=>{try{const q=$("question").value.trim();if(!q){$("answer").textContent="Question likhein.";return;}const r=await fetch(SERVER+"/ask?question="+encodeURIComponent(q)+"&t="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("NLP request failed");const data=await r.json();$("answer").innerHTML="<b>"+data.answer+"</b>"+(data.data?.length?"<ul class='list'>"+data.data.slice(0,8).map(x=>"<li>"+(x.location_name||"GPS "+x.latitude.toFixed(5)+", "+x.longitude.toFixed(5))+" — "+(x.recommendation?.action||x.quality_category)+"</li>").join("")+"</ul>":"");}catch(e){$("answer").textContent="NLP error: "+e.message;}};
   async function downloadEndpoint(path,filename,label){const r=await fetch(SERVER+path+"?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("Export failed ("+r.status+")");const blob=await r.blob();downloadBlob(blob,filename);$("exportStatus").textContent=label+" downloaded. Check your browser Downloads folder.";return blob;}
-  $("exportPoor").onclick=async()=>{try{const r=await fetch(SERVER+"/measurements?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("Could not load latest measurements");const data=await r.json();const poorCount=data.data.filter(x=>x.quality_category==="Poor").length;if(!poorCount){$("exportStatus").textContent="No Poor measurements are currently saved.";return;}await downloadEndpoint("/export/poor-locations.csv","poor-network-locations.csv",poorCount+" Poor location(s)");}catch(e){$("exportStatus").textContent="Poor export error: "+e.message;}};
   $("exportAll").onclick=async()=>{try{await downloadEndpoint("/export/all-measurements.csv","telecom-network-all-measurements.csv","Complete measurement sheet");}catch(e){$("exportStatus").textContent="Complete sheet error: "+e.message;}};
   $("clearAll").onclick=async()=>{if(!confirm("Delete all saved measurements permanently? Export them first if you need a copy."))return;try{const r=await fetch(SERVER+"/measurements",{method:"DELETE"});if(!r.ok)throw Error("Delete failed");$("answer").textContent="All saved measurements deleted.";await loadData();}catch(e){$("answer").textContent="Delete error: "+e.message;}};
   loadData().catch(e=>$("status").textContent="Backend unavailable: "+e.message);
