@@ -431,19 +431,49 @@ def reverse_location(latitude: float, longitude: float):
     })
     request = Request(
         f"https://nominatim.openstreetmap.org/reverse?{query}",
-        headers={"User-Agent": "TelecomNetworkQualityDemo/1.0"},
+        headers={
+            "User-Agent": "TelecomNetworkQualityIntelligence/1.0",
+            "Accept-Language": "en",
+        },
     )
     try:
         with urlopen(request, timeout=8) as response:
             result = json.load(response)
     except Exception:
-        return {
-            "location_name": None,
-            "area_name": None,
-            "address": None,
-            "nearby_landmark": None,
-            "data_source": "UNAVAILABLE",
-        }
+        photon_query = urlencode({"lat": latitude, "lon": longitude})
+        photon_request = Request(
+            f"https://photon.komoot.io/reverse?{photon_query}",
+            headers={
+                "User-Agent": "TelecomNetworkQualityIntelligence/1.0",
+                "Accept-Language": "en",
+            },
+        )
+        try:
+            with urlopen(photon_request, timeout=8) as response:
+                feature = json.load(response).get("features", [{}])[0]
+            properties = feature.get("properties", {})
+            road = properties.get("name")
+            locality = (
+                properties.get("locality")
+                or properties.get("district")
+                or properties.get("city")
+            )
+            area_name = ", ".join(part for part in (road, locality) if part)
+            return {
+                "location_name": locality,
+                "area_name": area_name or None,
+                "address": area_name or locality,
+                "nearby_landmark": None,
+                "data_source": "OpenStreetMap Photon",
+            }
+        except Exception:
+            return {
+                "location_name": None,
+                "area_name": None,
+                "address": None,
+                "nearby_landmark": None,
+                "data_source": "UNAVAILABLE",
+            }
     address = result.get("address", {})
     location_name = (
         address.get("suburb")
