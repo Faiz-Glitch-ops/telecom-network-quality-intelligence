@@ -74,7 +74,7 @@ def make_recommendation(
             "priority": "High",
             "reason": "Poor quality and high estimated population density were found "
             "without a nearby tower; perform a formal coverage and business study.",
-            "evidence": evidence + [f"Estimated population density is {population_density:.0f} people/km²."],
+            "evidence": evidence + [f"Estimated population density is {population_density:.0f} people/km2."],
             "likely_causes": likely_causes + ["No nearby public tower record within the 2 km investigation radius"],
             "suggested_checks": suggested_checks + ["Perform a formal RF drive test and coverage study before any deployment decision."],
         }
