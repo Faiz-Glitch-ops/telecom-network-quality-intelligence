@@ -12,6 +12,7 @@ import sqlite3
 import csv
 import io
 import json
+import os
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from pathlib import Path
@@ -76,7 +77,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_FILE = PROJECT_ROOT / "backend" / "network_data.db"
+DB_FILE = Path(
+    os.environ.get(
+        "DATABASE_PATH",
+        str(PROJECT_ROOT / "backend" / "network_data.db"),
+    )
+)
 
 
 def get_connection():
