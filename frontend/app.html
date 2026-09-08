@@ -192,7 +192,7 @@
       $("ping").textContent=avg.toFixed(1)+" ms";
       $("jitter").textContent=jitter.toFixed(1)+" ms"; $("accuracy").textContent=c.accuracy.toFixed(1)+" m";
       $("location").textContent="GPS: "+c.latitude.toFixed(6)+", "+c.longitude.toFixed(6);
-      $("place").textContent=(place.location_name||place.address||"Readable place name unavailable")+
+      $("place").textContent="Current location: "+(place.area_name||place.location_name||place.address||"GPS "+c.latitude.toFixed(6)+", "+c.longitude.toFixed(6))+
         (place.nearby_landmark?" | Nearby: "+place.nearby_landmark:"");
       const causes=data.recommendation?.likely_causes||[];
       const checks=data.recommendation?.suggested_checks||[];
