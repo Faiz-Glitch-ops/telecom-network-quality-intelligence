@@ -387,9 +387,6 @@ def delete_all_measurements():
     cursor = conn.cursor()
     cursor.execute("DELETE FROM network_measurements")
     deleted = cursor.rowcount
-    cursor.execute(
-        "DELETE FROM sqlite_sequence WHERE name = 'network_measurements'"
-    )
     conn.commit()
     conn.close()
     return {"status": "success", "message": "All measurements deleted", "deleted_count": deleted}
