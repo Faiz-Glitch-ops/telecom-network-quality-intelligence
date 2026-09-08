@@ -262,7 +262,7 @@ def save_measurement(measurement: Measurement):
          nearest_tower_id, nearest_tower_distance_km, nearest_tower_data_source,
          population_density, population_data_source, recommendation, recommendation_reason,
          location_name, area_name, location_address, nearby_landmark)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         measurement.latitude,
         measurement.longitude,
