@@ -3,7 +3,7 @@ Telecom Network Quality Intelligence System - Backend
 Stage 2: Ping + Download-speed test endpoints, and measurement storage.
 """
 
-from fastapi import FastAPI
+from fastapi import Body, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, Field
@@ -200,7 +200,7 @@ def testfile():
 
 # ---------- ENDPOINT 3: /upload-test ----------
 @app.post("/upload-test")
-async def upload_test(data: bytes = b""):
+async def upload_test(data: bytes = Body(default=b"")):
     """
     Frontend se bheja gaya data receive karta hai.
     Upload speed measure karne ke liye use hota hai.

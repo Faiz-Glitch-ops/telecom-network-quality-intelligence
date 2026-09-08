@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import rasterio
+from rasterio.errors import RasterioError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -41,30 +42,33 @@ def find_nearest_population_cell(
 ) -> dict | None:
     """Return population density from WorldPop, or the labeled CSV fallback."""
     if WORLDPOP_FILE.exists():
-        with rasterio.open(WORLDPOP_FILE) as dataset:
-            if not (
-                dataset.bounds.left <= longitude <= dataset.bounds.right
-                and dataset.bounds.bottom <= latitude <= dataset.bounds.top
-            ):
-                return None
-            row, column = dataset.index(longitude, latitude)
-            value = float(dataset.read(1, window=((row, row + 1), (column, column + 1)))[0, 0])
-            if value == dataset.nodata or value < 0:
-                return None
-            cell_width_degrees = abs(dataset.transform.a)
-            cell_height_degrees = abs(dataset.transform.e)
-            cell_area_km2 = (
-                cell_width_degrees
-                * 111.32
-                * cell_height_degrees
-                * 111.32
-                * max(0.01, abs(math.cos(math.radians(latitude))))
-            )
-            return {
-                "population_count": round(value, 2),
-                "density_per_km2": round(value / cell_area_km2, 2),
-                "data_source": "REAL PUBLIC DATA - WorldPop 2025",
-            }
+        try:
+            with rasterio.open(WORLDPOP_FILE) as dataset:
+                if not (
+                    dataset.bounds.left <= longitude <= dataset.bounds.right
+                    and dataset.bounds.bottom <= latitude <= dataset.bounds.top
+                ):
+                    return None
+                row, column = dataset.index(longitude, latitude)
+                value = float(dataset.read(1, window=((row, row + 1), (column, column + 1)))[0, 0])
+                if value == dataset.nodata or value < 0:
+                    return None
+                cell_width_degrees = abs(dataset.transform.a)
+                cell_height_degrees = abs(dataset.transform.e)
+                cell_area_km2 = (
+                    cell_width_degrees
+                    * 111.32
+                    * cell_height_degrees
+                    * 111.32
+                    * max(0.01, abs(math.cos(math.radians(latitude))))
+                )
+                return {
+                    "population_count": round(value, 2),
+                    "density_per_km2": round(value / cell_area_km2, 2),
+                    "data_source": "REAL PUBLIC DATA - WorldPop 2025",
+                }
+        except (RasterioError, OSError) as error:
+            print(f"WorldPop raster unavailable; using labeled fallback: {error}")
     if not cells:
         return None
     nearest = min(
