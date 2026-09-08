@@ -450,13 +450,17 @@ def reverse_location(latitude: float, longitude: float):
     )
     return {
         "location_name": location_name,
-        "area_name": (
-            address.get("suburb")
-            or address.get("neighbourhood")
-            or address.get("quarter")
-            or address.get("city_district")
-            or address.get("city")
-        ),
+        "area_name": ", ".join(
+            part
+            for part in (
+                address.get("road"),
+                address.get("suburb")
+                or address.get("neighbourhood")
+                or address.get("quarter")
+                or address.get("city_district"),
+            )
+            if part
+        ) or address.get("city"),
         "address": result.get("display_name"),
         "nearby_landmark": landmark,
         "data_source": "OpenStreetMap Nominatim",
